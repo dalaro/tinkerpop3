@@ -655,12 +655,10 @@ gremlin> g.V().values('name').order{a,b -> a.get()[1] <=> b.get[1]} // order by 
 ==>lop
 ==>josh
 
-Note that `order()` takes a `Comparator` and thus, its possible to use comparator chaining to do multi-level comparisons.
+Note that `order()` takes a `Comparator` var args and thus, its possible to do secondary sorting. Secondary sorting is presented below along with the handy `Comparator.comparing()` method.
 
 [source,groovy]
 gremlin> import static java.util.Comparator.*
-...
-gremlin> import java.util.function.*
 ...
 gremlin> g.V().values('name').order(comparing{it.get()[1]}) // order by the second letter
 ==>marko
@@ -669,8 +667,7 @@ gremlin> g.V().values('name').order(comparing{it.get()[1]}) // order by the seco
 ==>ripple
 ==>lop
 ==>josh
-gremlin> g.V().values('name').
-           order(comparing{it.get()[1]}.thenComparing((Function){it.get()[2]})) // order by second letter and if a tie, the third letter
+gremlin> g.V().values('name').order(comparing{it.get()[1]},comparing{it.get()[12]}) // order by second letter and if a tie, the third letter
 ==>vadas
 ==>marko
 ==>peter
@@ -706,6 +703,8 @@ gremlin> g.V().orderBy('name',decr).map{it.get().value('name') + ' is ' + it.get
 ==>marko is v[1]
 ==>lop is v[3]
 ==>josh is v[4]
+
+IMPORTANT: The `orderBy()`-step allows the user to provide an arbitrary number of comparators for primary, secondary, etc. sorting. These comparators can be lambdas or they can be pre-defined enums (e.g. `Order.incr`). It is always best to use a pre-defined enum instead of a generic lambda as the underlying vendor may be able to optimize the execution when the comparator is inspectable.
 
 [[path-step]]
 Path Step
@@ -1414,7 +1413,6 @@ TinkerGraphStepStrategy implements TraversalStrategy.NoDependency {
     public void apply(final Traversal traversal, final TraversalEngine traversalEngine) {
         if (engine.equals(TraversalEngine.COMPUTER))  // Gremlin OLAP does not use indices but linear scans of the graph
             return;
-
         final TinkerGraphStep tinkerGraphStep = (TinkerGraphStep) traversal.getSteps().get(0);
         Step currentStep = tinkerGraphStep.getNextStep();
         while (true) {
