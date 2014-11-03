@@ -64,6 +64,7 @@
         <module>gremlin-driver</module>
         <module>gremlin-console</module>
         <module>gremlin-server</module>
+        <module>mapreduce-gremlin</module>
     </modules>
     <scm>
         <connection>scm:git:git@github.com:tinkerpop/tinkerpop3.git</connection>
