@@ -7,6 +7,7 @@ import com.tinkerpop.gremlin.process.T;
 import com.tinkerpop.gremlin.process.graph.step.sideEffect.StartStep;
 import com.tinkerpop.gremlin.structure.Direction;
 import com.tinkerpop.gremlin.structure.Edge;
+import com.tinkerpop.gremlin.structure.Element;
 import com.tinkerpop.gremlin.structure.Graph;
 import com.tinkerpop.gremlin.structure.Property;
 import com.tinkerpop.gremlin.structure.Vertex;
@@ -126,6 +127,8 @@ public class Neo4jVertex extends Neo4jElement implements Vertex, Vertex.Iterator
 
     @Override
     public void remove() {
+        if (this.removed) throw Element.Exceptions.elementAlreadyRemoved(Vertex.class, this.getBaseVertex().getId());
+        this.removed = true;
         this.graph.tx().readWrite();
         try {
             final Node node = this.getBaseVertex();
@@ -233,7 +236,8 @@ public class Neo4jVertex extends Neo4jElement implements Vertex, Vertex.Iterator
         try {
             return this.getBaseVertex().hasProperty(key);
         } catch (IllegalStateException | NotFoundException ex) {
-            return false;
+            // if vertex is removed before/after transaction close
+            throw Element.Exceptions.elementAlreadyRemoved(Vertex.class, this.id());
         }
     }
 }

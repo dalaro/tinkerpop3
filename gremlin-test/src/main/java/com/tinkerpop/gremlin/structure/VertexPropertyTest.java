@@ -6,6 +6,7 @@ import com.tinkerpop.gremlin.FeatureRequirement;
 import com.tinkerpop.gremlin.FeatureRequirementSet;
 import com.tinkerpop.gremlin.process.T;
 import com.tinkerpop.gremlin.util.StreamFactory;
+import com.tinkerpop.gremlin.util.function.FunctionUtils;
 import com.tinkerpop.gremlin.util.function.TriFunction;
 import org.javatuples.Pair;
 import org.junit.Test;
@@ -14,13 +15,13 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 /**
  * @author Marko A. Rodriguez (http://markorodriguez.com)
@@ -78,11 +79,10 @@ public class VertexPropertyTest extends AbstractGremlinTest {
             try {
                 v.property("name");
                 fail("This should throw a: " + Vertex.Exceptions.multiplePropertiesExistForProvidedKey("name"));
-            } catch (final IllegalStateException e) {
-                assertEquals(Vertex.Exceptions.multiplePropertiesExistForProvidedKey("name").getMessage(), e.getMessage());
             } catch (final Exception e) {
-                fail("This should throw a: " + Vertex.Exceptions.multiplePropertiesExistForProvidedKey("name"));
+                validateException(Vertex.Exceptions.multiplePropertiesExistForProvidedKey("name"), e);
             }
+
             assertTrue(v.valueMap().next().get("name").contains("marko"));
             assertTrue(v.valueMap().next().get("name").contains("marko a. rodriguez"));
             assertEquals(3, v.properties().count().next().intValue());
@@ -208,6 +208,29 @@ public class VertexPropertyTest extends AbstractGremlinTest {
             b.property("name").remove();
         }
 
+        @Test
+        @FeatureRequirementSet(FeatureRequirementSet.Package.VERTICES_ONLY)
+        @FeatureRequirement(featureClass = Graph.Features.VertexFeatures.class, feature = Graph.Features.VertexFeatures.FEATURE_MULTI_PROPERTIES)
+        @FeatureRequirement(featureClass = Graph.Features.VertexFeatures.class, feature = Graph.Features.VertexFeatures.FEATURE_REMOVE_PROPERTY)
+        public void shouldAllowIteratingAndRemovingVertexPropertyProperties() {
+            final Vertex daniel = g.addVertex("name", "daniel", "name", "kuppitz", "name", "big d", "name", "the german");
+            daniel.properties("name")
+                    .sideEffect(vp -> vp.get().<Object>property("aKey", UUID.randomUUID().toString()))
+                    .sideEffect(vp -> vp.get().<Object>property("bKey", UUID.randomUUID().toString()))
+                    .sideEffect(vp -> vp.get().<Object>property("cKey", UUID.randomUUID().toString())).iterate();
+
+            assertEquals(4, daniel.properties().count().next().longValue());
+            assertEquals(12, daniel.properties().properties().count().next().longValue());
+
+            daniel.properties().properties().remove();
+            assertEquals(4, daniel.properties().count().next().longValue());
+            assertEquals(0, daniel.properties().properties().count().next().longValue());
+
+            daniel.properties().remove();
+            assertEquals(0, daniel.properties().count().next().longValue());
+            assertEquals(0, daniel.properties().properties().count().next().longValue());
+        }
+
 
         @Test
         @FeatureRequirementSet(FeatureRequirementSet.Package.VERTICES_ONLY)
@@ -311,17 +334,42 @@ public class VertexPropertyTest extends AbstractGremlinTest {
                 assertEquals(0, g.E().count().next().intValue());
             });
         }
+    }
+
+    @RunWith(Parameterized.class)
+    @ExceptionCoverage(exceptionClass = Element.Exceptions.class, methods = {
+            "elementAlreadyRemoved"
+    })
+    public static class ExceptionConsistencyWhenVertexPropertyRemovedTest extends AbstractGremlinTest {
+
+        @Parameterized.Parameters(name = "{index}: expect - {0}")
+        public static Iterable<Object[]> data() {
+            return Arrays.asList(new Object[][]{
+                    {"property(k)", FunctionUtils.wrapConsumer((VertexProperty p) -> p.property("name"))}});
+        }
+
+        @Parameterized.Parameter(value = 0)
+        public String name;
+
+        @Parameterized.Parameter(value = 1)
+        public Consumer<VertexProperty> functionToTest;
 
         @Test
-        @FeatureRequirementSet(FeatureRequirementSet.Package.VERTICES_ONLY)
-        @FeatureRequirement(featureClass = Graph.Features.VertexPropertyFeatures.class, feature = Graph.Features.VertexPropertyFeatures.FEATURE_REMOVE_PROPERTY)
-        @FeatureRequirement(featureClass = Graph.Features.VertexFeatures.class, feature = Graph.Features.VertexFeatures.FEATURE_META_PROPERTIES)
-        public void shouldReturnEmptyPropertyIfEdgeWasRemoved() {
+        @FeatureRequirement(featureClass = Graph.Features.VertexFeatures.class, feature = Graph.Features.VertexFeatures.FEATURE_ADD_VERTICES)
+        @FeatureRequirement(featureClass = Graph.Features.VertexFeatures.class, feature = Graph.Features.VertexFeatures.FEATURE_REMOVE_VERTICES)
+        public void shouldThrowExceptionIfVertexPropertyWasRemoved() {
             final Vertex v1 = g.addVertex();
             final VertexProperty p = v1.property("name", "stephen", "year", "2012");
+            final Object id = p.id();
             p.remove();
-            final Property ip  = p.property("year");
-            tryCommit(g, g -> assertEquals(Property.empty(), ip));
+            tryCommit(g, g -> {
+                try {
+                    functionToTest.accept(p);
+                    fail("Should have thrown exception as the Vertex was already removed");
+                } catch (Exception ex) {
+                    validateException(Element.Exceptions.elementAlreadyRemoved(VertexProperty.class, id), ex);
+                }
+            });
         }
     }
 
